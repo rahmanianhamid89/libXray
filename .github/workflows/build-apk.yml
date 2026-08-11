@@ -1,0 +1,203 @@
+name: Build libXray APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r29
+          add-to-path: true
+
+      - name: Build libXray AAR
+        run: |
+          python3 build/main.py android
+
+      - name: Verify AAR
+        run: |
+          test -f libXray.aar
+          unzip -l libXray.aar
+          unzip -l libXray.aar | grep 'jni/arm64-v8a/libgojni.so'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Create Android APK project
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p apk-wrapper/app/libs
+          mkdir -p apk-wrapper/app/src/main/java/com/rahmanianhamid89/libxray
+          mkdir -p apk-wrapper/app/src/main/res/values
+
+          cp libXray.aar apk-wrapper/app/libs/
+
+          cat > apk-wrapper/settings.gradle <<'GRADLE'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "libXrayAPK"
+          include(":app")
+          GRADLE
+
+          cat > apk-wrapper/build.gradle <<'GRADLE'
+          plugins {
+              id "com.android.application" version "8.7.3" apply false
+          }
+          GRADLE
+
+          cat > apk-wrapper/app/build.gradle <<'GRADLE'
+          plugins {
+              id "com.android.application"
+          }
+
+          android {
+              namespace "com.rahmanianhamid89.libxray"
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId "com.rahmanianhamid89.libxray"
+                  minSdk 21
+                  targetSdk 35
+                  versionCode 1
+                  versionName "1.0"
+          }
+
+              packaging {
+                  jniLibs {
+                      useLegacyPackaging = false
+                  }
+              }
+          }
+
+          dependencies {
+              implementation files("libs/libXray.aar")
+          }
+          GRADLE
+
+          cat > apk-wrapper/app/src/main/AndroidManifest.xml <<'XML'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <application
+                  android:theme="@style/AppTheme"
+                  android:label="libXray">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
+          </manifest>
+          XML
+
+          cat > apk-wrapper/app/src/main/res/values/styles.xml <<'XML'
+          <resources>
+              <style
+                  name="AppTheme"
+                  parent="android:style/Theme.Material.Light.NoActionBar">
+              </style>
+          </resources>
+          XML
+
+          cat > apk-wrapper/app/src/main/java/com/rahmanianhamid89/libxray/MainActivity.java <<'JAVA'
+          package com.rahmanianhamid89.libxray;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.widget.TextView;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  TextView text = new TextView(this);
+                  text.setText(
+                      "libXray\n\n" +
+                      "ARM64 library loaded successfully."
+                  );
+                  text.setTextSize(20);
+                  text.setPadding(40, 40, 40, 40);
+
+                  setContentView(text);
+              }
+          }
+          JAVA
+
+      - name: Build APK
+        working-directory: apk-wrapper
+        run: |
+          gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Rename APK
+        run: |
+          cp apk-wrapper/app/build/outputs/apk/release/app-release.apk libXray-arm64.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: libXray-Android-ARM64
+          path: |
+            libXray-arm64.apk
+            libXray.aar
+            libXray-sources.jar
+          if-no-files-found: error
