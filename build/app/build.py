@@ -109,48 +109,39 @@ class Builder(object):
     def download_geo(self):
         os.chdir(self.lib_dir)
         main_path = os.path.join("download_geo", "main.go")
-        ret = subprocess.run(["go", "run", main_path])
+        ret = subprocess.run(["go", "run", "-ldflags=-checklinkname=0", main_path])
         if ret.returncode != 0:
             raise Exception("download_geo failed")
 
     def prepare_gomobile(self):
-        result = subprocess.run(
-            [
-                "go",
-                "list",
-                "-m",
-                "-f",
-                "{{.Version}}",
-                "golang.org/x/mobile@latest",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        version = result.stdout.strip()
-        if result.returncode != 0 or not version:
-            raise Exception("resolve latest gomobile version failed")
+        mobile_dir = os.path.join(self.lib_dir, "third_party_x_mobile")
+
+        if not os.path.isdir(mobile_dir):
+            raise Exception(
+                f"local third_party_x_mobile not found: {mobile_dir}"
+            )
 
         ret = subprocess.run(
-            [
-                "go",
-                "get",
-                "-tool",
-                f"golang.org/x/mobile/cmd/gobind@{version}",
-            ]
+            ["go", "install", "./cmd/gomobile"],
+            cwd=mobile_dir,
         )
         if ret.returncode != 0:
-            raise Exception("add gobind tool dependency failed")
+            raise Exception("local gomobile install failed")
+
+        gomobile = os.path.join(
+            os.environ["HOME"],
+            "go",
+            "bin",
+            "gomobile",
+        )
+
+        if not os.path.isfile(gomobile):
+            raise Exception(f"gomobile was not installed: {gomobile}")
 
         ret = subprocess.run(
-            [
-                "go",
-                "install",
-                f"golang.org/x/mobile/cmd/gomobile@{version}",
-            ]
+            [gomobile, "init"],
+            cwd=mobile_dir,
         )
-        if ret.returncode != 0:
-            raise Exception("go install gomobile failed")
-        ret = subprocess.run(["gomobile", "init"])
         if ret.returncode != 0:
             raise Exception("gomobile init failed")
 

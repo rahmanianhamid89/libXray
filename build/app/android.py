@@ -25,7 +25,7 @@ class AndroidBuilder(Builder):
                     "gomobile",
                     "bind",
                     "-target",
-                    "android",
+                    "android/arm64",
                     "-androidapi",
                     "21",
                     "-ldflags=-checklinkname=0 -extldflags=-Wl,-z,max-page-size=16384",
