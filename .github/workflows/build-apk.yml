@@ -186,16 +186,16 @@ jobs:
       - name: Build APK
         working-directory: apk-wrapper
         run: |
-          gradle --no-daemon --stacktrace :app:assembleRelease
+          gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Rename APK
         shell: bash
         run: |
           set -e
-          APK="$(find apk-wrapper/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          APK="$(find apk-wrapper/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
           if [ -z "$APK" ]; then
             echo "No APK was produced."
-            find apk-wrapper/app/build/outputs/apk/release -maxdepth 2 -type f -print 2>/dev/null || true
+            find apk-wrapper/app/build/outputs/apk/debug -maxdepth 2 -type f -print 2>/dev/null || true
             exit 1
           fi
           echo "Using APK: $APK"
